@@ -1,4 +1,4 @@
-// dsh-rewind — Host half verification.
+// dsh-sqy-rewind — Host half verification.
 //
 // `entry.js` cannot be verified by refreshing the page: the running DSH holds the
 // old module and the profile's live reload does not replace it. Restarting DSH is
@@ -9,8 +9,8 @@
 // `apply()`, and then:
 //
 //   1. asserts exactly one route was claimed, and that it is the `/api` prefix
-//      (claiming all of `/plugins/dsh-rewind` would hide the shell's own
-//      `/plugins/dsh-rewind/client.js` and the button would never register),
+//      (claiming all of `/plugins/dsh-sqy-rewind` would hide the shell's own
+//      `/plugins/dsh-sqy-rewind/client.js` and the button would never register),
 //   2. drives the HTTP surface with fake requests — loopback refusal, missing
 //      parameters, malformed bodies, unknown paths,
 //   3. runs real rewinds against a stub session and asserts the event that lands:
@@ -187,13 +187,13 @@ const TURNS = [
 /** POST one rewind for `turn` and return the parsed response. */
 async function rewind(route, turn) {
   return await call(route, {
-    url: '/plugins/dsh-rewind/api/rewind',
+    url: '/plugins/dsh-sqy-rewind/api/rewind',
     method: 'POST',
     body: JSON.stringify({ sessionId: 'session-test', turn }),
   })
 }
 
-console.log('dsh-rewind — Host half verification')
+console.log('dsh-sqy-rewind — Host half verification')
 
 // --- route registration -------------------------------------------------------
 
@@ -207,10 +207,10 @@ console.log('dsh-rewind — Host half verification')
   })
   check('claims the /api prefix, not the whole plugin prefix', () => {
     assert.equal(routes[0].kind, 'prefix')
-    assert.equal(routes[0].path, '/plugins/dsh-rewind/api')
-    // The shell serves /plugins/dsh-rewind/client.js; claiming the parent would
+    assert.equal(routes[0].path, '/plugins/dsh-sqy-rewind/api')
+    // The shell serves /plugins/dsh-sqy-rewind/client.js; claiming the parent would
     // answer it with our 404 and the button would never register.
-    assert.notEqual(routes[0].path, '/plugins/dsh-rewind')
+    assert.notEqual(routes[0].path, '/plugins/dsh-sqy-rewind')
   })
   check('declares the services it needs', () => {
     for (const service of ['webServer', 'sessions', 'agents', 'sessionProjections', 'sessionQuery']) {
@@ -219,7 +219,7 @@ console.log('dsh-rewind — Host half verification')
   })
   check('exposes apply()', () => {
     assert.equal(typeof entry.apply, 'function')
-    assert.equal(entry.name, 'dsh-rewind')
+    assert.equal(entry.name, 'dsh-sqy-rewind')
   })
 }
 
@@ -232,41 +232,41 @@ console.log('dsh-rewind — Host half verification')
   const route = routes[0]
 
   const nonLoopback = await call(route, {
-    url: '/plugins/dsh-rewind/api/state?sessionId=session-test',
+    url: '/plugins/dsh-sqy-rewind/api/state?sessionId=session-test',
     address: '10.0.0.7',
   })
   check('non-loopback status is 403', () => assert.equal(nonLoopback.status, 403))
 
-  const noSession = await call(route, { url: '/plugins/dsh-rewind/api/state' })
+  const noSession = await call(route, { url: '/plugins/dsh-sqy-rewind/api/state' })
   check('state without sessionId is 400', () => {
     assert.equal(noSession.status, 400)
     assert.equal(noSession.body.ok, false)
   })
 
-  const unknown = await call(route, { url: '/plugins/dsh-rewind/api/nope' })
+  const unknown = await call(route, { url: '/plugins/dsh-sqy-rewind/api/nope' })
   check('unknown path is 404', () => assert.equal(unknown.status, 404))
 
-  const coldSession = await call(route, { url: '/plugins/dsh-rewind/api/state?sessionId=other' })
+  const coldSession = await call(route, { url: '/plugins/dsh-sqy-rewind/api/state?sessionId=other' })
   check('state for a non-live session is 404', () => assert.equal(coldSession.status, 404))
 
-  const badBody = await call(route, { url: '/plugins/dsh-rewind/api/rewind', method: 'POST', body: 'not json' })
+  const badBody = await call(route, { url: '/plugins/dsh-sqy-rewind/api/rewind', method: 'POST', body: 'not json' })
   check('malformed body is 400', () => assert.equal(badBody.status, 400))
 
   const missing = await call(route, {
-    url: '/plugins/dsh-rewind/api/rewind',
+    url: '/plugins/dsh-sqy-rewind/api/rewind',
     method: 'POST',
     body: JSON.stringify({ sessionId: 'session-test' }),
   })
   check('rewind without turn is 400', () => assert.equal(missing.status, 400))
 
   const notATurn = await call(route, {
-    url: '/plugins/dsh-rewind/api/rewind',
+    url: '/plugins/dsh-sqy-rewind/api/rewind',
     method: 'POST',
     body: JSON.stringify({ sessionId: 'session-test', turn: 'two' }),
   })
   check('a non-numeric turn is 400', () => assert.equal(notATurn.status, 400))
 
-  const wrongMethod = await call(route, { url: '/plugins/dsh-rewind/api/rewind', method: 'GET' })
+  const wrongMethod = await call(route, { url: '/plugins/dsh-sqy-rewind/api/rewind', method: 'GET' })
   check('GET on the rewind endpoint is 404', () => assert.equal(wrongMethod.status, 404))
 }
 
@@ -493,7 +493,7 @@ console.log('dsh-rewind — Host half verification')
   const { ctx, routes } = makeCtx({ session, events: marked, turns: TURNS })
   entry.apply(ctx)
 
-  const response = await call(routes[0], { url: '/plugins/dsh-rewind/api/state?sessionId=session-test' })
+  const response = await call(routes[0], { url: '/plugins/dsh-sqy-rewind/api/state?sessionId=session-test' })
 
   check('state reports the landed marker with its turn range', () => {
     assert.equal(response.status, 200)
@@ -529,7 +529,7 @@ console.log('dsh-rewind — Host half verification')
   const { ctx, routes } = makeCtx({ session, events: mixed, turns: [{ turn: 3, seq: 76 }] })
   entry.apply(ctx)
 
-  const response = await call(routes[0], { url: '/plugins/dsh-rewind/api/state?sessionId=session-test' })
+  const response = await call(routes[0], { url: '/plugins/dsh-sqy-rewind/api/state?sessionId=session-test' })
 
   check('state reports our marker and ignores the compaction summary', () => {
     assert.equal(response.body.marks.length, 1)
@@ -552,7 +552,7 @@ console.log('dsh-rewind — Host half verification')
   const { ctx, routes } = makeCtx({ session, events: noOp, turns: TURNS })
   entry.apply(ctx)
 
-  const response = await call(routes[0], { url: '/plugins/dsh-rewind/api/state?sessionId=session-test' })
+  const response = await call(routes[0], { url: '/plugins/dsh-sqy-rewind/api/state?sessionId=session-test' })
 
   check('state ignores a marker-shaped event with no replacement', () => {
     assert.equal(response.body.marks.length, 0)
@@ -560,6 +560,6 @@ console.log('dsh-rewind — Host half verification')
 }
 
 console.log(failures === 0
-  ? 'dsh-rewind — all Host checks passed'
-  : `dsh-rewind — ${String(failures)} Host check(s) FAILED`)
+  ? 'dsh-sqy-rewind — all Host checks passed'
+  : `dsh-sqy-rewind — ${String(failures)} Host check(s) FAILED`)
 process.exit(failures === 0 ? 0 : 1)

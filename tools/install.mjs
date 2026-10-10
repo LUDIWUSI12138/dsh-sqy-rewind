@@ -1,9 +1,9 @@
-// Install dsh-rewind into a DSH profile.
+// Install dsh-sqy-rewind into a DSH profile.
 //
 //   node tools/install.mjs [--profile desktop] [--dry-run]
 //
 // Two changes, the same two every hand-installed DSH plugin makes:
-//   1. a junction at <profile>/node_modules/dsh-rewind -> this package
+//   1. a junction at <profile>/node_modules/dsh-sqy-rewind -> this package
 //   2. one `- insert:` row appended to <profile>/cordis.patch.yml
 //
 // Node rather than PowerShell because cordis.patch.yml is UTF-8 without a BOM and
@@ -14,7 +14,7 @@ import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const PKG = 'dsh-rewind'
+const PKG = 'dsh-sqy-rewind'
 const ROW_ID = 'rewind'
 const SRC = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 

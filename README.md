@@ -1,4 +1,4 @@
-# dsh-rewind
+# dsh-sqy-rewind
 
 **Rewind a DSH session to before a turn you already sent.** The model-visible surface is replaced
 in place — as far as the model is concerned that turn never happened — and the interface hides the
@@ -104,20 +104,20 @@ DSH 的 transcript 是**故意**用 append 来源的事件拼的。官方在
 
 **方式一：DSH 插件市场（推荐）**
 
-被 [awesome-dsh-plugin](https://awesome-dsh-plugin.com) 收录后，在 DSH 里打开插件市场搜 `dsh-rewind`
+被 [awesome-dsh-plugin](https://awesome-dsh-plugin.com) 收录后，在 DSH 里打开插件市场搜 `dsh-sqy-rewind`
 即可一键安装。市场的安装源被限制在注册表内，所以"被收录"是别人能一键装的前提。
 
 **方式二：dsh CLI**
 
 ```sh
-dsh plugin --profile desktop add github:LUDIWUSI12138/dsh-rewind
+dsh plugin --profile desktop add github:LUDIWUSI12138/dsh-sqy-rewind
 ```
 
 **方式三：从源码装（开发用）**
 
 ```sh
-git clone https://github.com/LUDIWUSI12138/dsh-rewind.git
-cd dsh-rewind
+git clone https://github.com/LUDIWUSI12138/dsh-sqy-rewind.git
+cd dsh-sqy-rewind
 
 node tools/install.mjs --profile desktop --dry-run   # 先看它要做什么
 node tools/install.mjs --profile desktop             # 真装
@@ -133,11 +133,11 @@ node tools/install.mjs --profile desktop             # 真装
 | Node | 22.19+ 或 24+（与 `package.json` 的 `engines` 一致） |
 | 平台 | Windows 实测通过。安装器用 junction，POSIX 上 Node 会退化成普通符号链接，未实测 |
 
-**它改三处**（改之前全部备份到 `~/.dsh/.dsh-rollback-dsh-rewind-<时间戳>/`）：
+**它改三处**（改之前全部备份到 `~/.dsh/.dsh-rollback-dsh-sqy-rewind-<时间戳>/`）：
 
 | 位置 | 改动 | 少了会怎样 |
 |---|---|---|
-| `<profile>/node_modules/dsh-rewind` | 指向本包的 junction | Host 半根本加载不到 |
+| `<profile>/node_modules/dsh-sqy-rewind` | 指向本包的 junction | Host 半根本加载不到 |
 | `<profile>/cordis.patch.yml` | 追加一行 `- insert:` | 插件不被注册（bundle 自带的 patch 一般已覆盖它，这行是保险） |
 | `<profile>/package.json` | 写入 `dependencies` 和 `dsh.profile.bundles` | **浏览器半不会进前端 bundle**：按钮缺失，或只在个别会话里出现 |
 
@@ -177,7 +177,7 @@ node tools/verify-entry.mjs  # Host 半：stub context 跑 apply()，再用假�
 ```
 
 `tools/verify-entry.mjs` 是改 `entry.js` 之后最该跑的东西：它不起 DSH、不占端口，
-以 stub context 调 `apply()`，检查路由只认领 `/api` 前缀（认领整个 `/plugins/dsh-rewind`
+以 stub context 调 `apply()`，检查路由只认领 `/api` 前缀（认领整个 `/plugins/dsh-sqy-rewind`
 会挡住 shell 自己的 `client.js`），然后走一遍非回环 403、缺参数 400、坏 JSON 400、未知路径 404、
 非活动会话 404，最后**真的跑几次回退**，断言落地事件的类型、`user/message` 载体（以及它**不是**
 developer 消息）、replace 的三个键、`sourceEventSeqs` 对被遮蔽节点的完整覆盖、要隐藏的 turn 区间，
@@ -189,7 +189,7 @@ developer 消息）、replace 的三个键、`sourceEventSeqs` 对被遮蔽节�
 
 | 文件 | 作用 |
 |---|---|
-| `entry.js` | Host 半：回退逻辑 + `/plugins/dsh-rewind/api/*` |
+| `entry.js` | Host 半：回退逻辑 + `/plugins/dsh-sqy-rewind/api/*` |
 | `src/client.js` | 浏览器半源码：DOM 注入按钮 + DOM 隐藏 |
 | `lib/client.js` | 构建产物（`window.__ModuleLoader__.load` 包装，勿手改） |
 | `build-client.mjs` | 上面那个包装 |
@@ -199,10 +199,10 @@ developer 消息）、replace 的三个键、`sourceEventSeqs` 对被遮蔽节�
 ## 接口
 
 ```
-GET  /plugins/dsh-rewind/api/state?sessionId=<id>
+GET  /plugins/dsh-sqy-rewind/api/state?sessionId=<id>
   -> { ok: true, marks: [{ startSeq, endSeq, fromTurn, toTurn }] }
 
-POST /plugins/dsh-rewind/api/rewind
+POST /plugins/dsh-sqy-rewind/api/rewind
   body: { sessionId, turn }
   -> { ok: true, startSeq, endSeq, turn, fromTurn, toTurn }
 ```

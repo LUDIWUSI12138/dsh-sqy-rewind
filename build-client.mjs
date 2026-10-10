@@ -5,7 +5,7 @@
 // through the factory's `require`), so there is nothing to resolve and the
 // wrapper is the whole build.
 //
-//   window.__ModuleLoader__.load({ id: "dsh-rewind", factory: (require) => {
+//   window.__ModuleLoader__.load({ id: "dsh-sqy-rewind", factory: (require) => {
 //   var module = { exports: {} }; var exports = module.exports;
 //   <src/client.js verbatim>
 //   return module.exports; } });

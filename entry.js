@@ -1,4 +1,4 @@
-// dsh-rewind — Host half: roll the model history back to before a turn.
+// dsh-sqy-rewind — Host half: roll the model history back to before a turn.
 //
 // WHAT "REWIND" MEANS HERE
 // ------------------------
@@ -37,22 +37,22 @@
 //
 // WHAT THIS HALF OWNS
 // -------------------
-//   GET  /plugins/dsh-rewind/api/state?sessionId=...   every landed rewind marker
-//   POST /plugins/dsh-rewind/api/rewind                perform one rewind
+//   GET  /plugins/dsh-sqy-rewind/api/state?sessionId=...   every landed rewind marker
+//   POST /plugins/dsh-sqy-rewind/api/rewind                perform one rewind
 //
-// Nothing else under /plugins/dsh-rewind is claimed. `/plugins/dsh-rewind/client.js`
+// Nothing else under /plugins/dsh-sqy-rewind is claimed. `/plugins/dsh-sqy-rewind/client.js`
 // belongs to the shell's client-modules service, and claiming the whole prefix here
 // would answer that request with this plugin's 404 — the button would never register.
 
 import { randomUUID } from 'node:crypto'
 
-export const name = 'dsh-rewind'
+export const name = 'dsh-sqy-rewind'
 
 /** Services this half consumes. */
 export const inject = ['webServer', 'sessions', 'agents', 'sessionProjections', 'sessionQuery']
 
 /** Route prefix this package owns. */
-const ROUTE = '/plugins/dsh-rewind'
+const ROUTE = '/plugins/dsh-sqy-rewind'
 
 /**
  * The marker's message text.
@@ -76,7 +76,7 @@ function makeLog(ctx) {
   return (level, message) => {
     try {
       const sink = ctx.logger?.[level] ?? ctx.logger?.info
-      sink?.(`dsh-rewind: ${message}`)
+      sink?.(`dsh-sqy-rewind: ${message}`)
     } catch {
       // Nothing left to do about it.
     }
@@ -428,7 +428,7 @@ export function apply(ctx) {
         log('warn', `api failed: ${String(error)}`)
       })
     },
-  }), 'dsh-rewind: control API')
+  }), 'dsh-sqy-rewind: control API')
 
   log('info', `mounted ${ROUTE}/api`)
 }

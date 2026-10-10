@@ -1,4 +1,4 @@
-// dsh-rewind — browser half: a rewind button injected into the USER's own action
+// dsh-sqy-rewind — browser half: a rewind button injected into the USER's own action
 // row, plus the DOM-side hiding that makes a rewind visible.
 //
 // WHY THIS IS A DOM INJECTION AND NOT A SLOT
@@ -45,7 +45,7 @@
 // the shadowed nodes for good, so there is no "un-rewind" to offer. That is why the
 // button asks for a second click before it does anything.
 
-const ROUTE = '/plugins/dsh-rewind'
+const ROUTE = '/plugins/dsh-sqy-rewind'
 
 /** The user message's action row (MessageIconActions root, clock="start"). */
 const ROW_SELECTOR = 'div[data-clock="start"]'
@@ -72,13 +72,13 @@ const USER_FLOW_KIND = 'user'
 const TURN_ATTR = 'data-chat-turn'
 
 /** Marks a button this half injected, so a sweep never doubles one up. */
-const INJECT_ATTR = 'data-dsh-rewind'
+const INJECT_ATTR = 'data-dsh-sqy-rewind'
 
 /** Static stylesheet holding the button and tip rules. */
-const STYLE_ID = 'dsh-rewind-style'
+const STYLE_ID = 'dsh-sqy-rewind-style'
 
 /** Stylesheet rewritten on every refresh; its rules hide rewound turns. */
-const HIDE_STYLE_ID = 'dsh-rewind-hide'
+const HIDE_STYLE_ID = 'dsh-sqy-rewind-hide'
 
 /** Safety cap: never emit more than this many turn selectors for one marker. */
 const MAX_TURNS_PER_MARK = 500
@@ -513,7 +513,7 @@ function createRewindButton(row, copy, turn, runtime) {
   }
 
   const fail = (message) => {
-    console.warn('dsh-rewind: rewind failed:', message)
+    console.warn('dsh-sqy-rewind: rewind failed:', message)
     setPhase('idle')
     showTip(button, message, 'error')
   }
@@ -659,7 +659,7 @@ function startInjection(runtime) {
       try {
         sweep()
       } catch (error) {
-        console.warn('dsh-rewind: DOM sweep failed', error)
+        console.warn('dsh-sqy-rewind: DOM sweep failed', error)
       }
     }, delay)
   }
@@ -734,11 +734,11 @@ exports.apply = function apply(ctx) {
             // that resolves the session id has to be asked for explicitly.
             injection.kick()
           } catch (error) {
-            console.warn('dsh-rewind: sessions service unavailable', error)
+            console.warn('dsh-sqy-rewind: sessions service unavailable', error)
           }
         })
       } catch (error) {
-        console.warn('dsh-rewind: sessions injection failed', error)
+        console.warn('dsh-sqy-rewind: sessions injection failed', error)
       }
     }
 
@@ -749,12 +749,12 @@ exports.apply = function apply(ctx) {
 
     if (ctx !== null && ctx !== undefined && typeof ctx.effect === 'function') {
       try {
-        ctx.effect(() => injection.stop, 'dsh-rewind: injected user-action button')
+        ctx.effect(() => injection.stop, 'dsh-sqy-rewind: injected user-action button')
       } catch (error) {
-        console.warn('dsh-rewind: teardown not registered', error)
+        console.warn('dsh-sqy-rewind: teardown not registered', error)
       }
     }
   } catch (error) {
-    console.warn('dsh-rewind: wiring failed', error)
+    console.warn('dsh-sqy-rewind: wiring failed', error)
   }
 }
