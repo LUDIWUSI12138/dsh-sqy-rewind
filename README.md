@@ -130,7 +130,7 @@ node tools/install.mjs --profile desktop             # 真装
 | 项 | 要求 |
 |---|---|
 | DSH | 桌面版，实测 `0.2.0-rc.2` |
-| Node | 18+（安装器是 ESM） |
+| Node | 22.19+ 或 24+（与 `package.json` 的 `engines` 一致） |
 | 平台 | Windows 实测通过。安装器用 junction，POSIX 上 Node 会退化成普通符号链接，未实测 |
 
 **它改三处**（改之前全部备份到 `~/.dsh/.dsh-rollback-dsh-rewind-<时间戳>/`）：
