@@ -9,6 +9,10 @@ rewound turns. DSH's own source is untouched and the original session log is nev
 
 ## 长什么样
 
+![每条用户消息下面，和「复制」并排的回退图标](docs/screenshots/rewind-01.png)
+
+![点第一次后弹出的「再点一次确认回退」提示](docs/screenshots/rewind-02.png)
+
 **每条用户消息下面**，和「复制」并排多一个回退图标：
 
 - 第一次点：弹出「再点一次确认回退」提示；点页面任意空白处立刻收起。提示**不会自己超时消失**，也不带按钮——再点一下这个回退图标就是确认
