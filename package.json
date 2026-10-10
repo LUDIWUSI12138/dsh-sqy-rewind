@@ -1,0 +1,36 @@
+{
+  "name": "dsh-rewind",
+  "version": "0.1.0",
+  "description": "对话回退：把当前会话退回本轮对话发起之前。模型历史用 surface replace 就地遮蔽，界面同步隐藏被回退的轮次；原始日志保留，可再放出来。不改 DSH 本体源码。",
+  "license": "MIT",
+  "type": "module",
+  "main": "entry.js",
+  "exports": {
+    ".": "./entry.js",
+    "./client": {
+      "default": "./lib/client.js"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "src",
+    "tools",
+    "cordis.patch.yml",
+    "entry.js",
+    "package.json",
+    "README.md"
+  ],
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "dsh": {
+    "client": {
+      "platform": "web"
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

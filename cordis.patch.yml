@@ -1,0 +1,9 @@
+# dsh-rewind bundle layer: a profile gets this row by installing the bundle,
+# without hand-editing cordis.patch.yml. A profile-level patch can still
+# disable the row by id.
+#
+# The Host half owns every decision; this file only mounts it.
+
+- insert:
+    - id: rewind
+      name: dsh-rewind
