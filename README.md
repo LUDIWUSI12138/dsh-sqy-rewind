@@ -1,5 +1,7 @@
 # dsh-sqy-rewind
 
+[![Listed in awesome-dsh-plugin](https://img.shields.io/badge/Listed%20in-awesome--dsh--plugin-blue?logo=github&logoColor=white)](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin)
+
 **Rewind a DSH session to before a turn you already sent.** The model-visible surface is replaced
 in place — as far as the model is concerned that turn never happened — and the interface hides the
 rewound turns. DSH's own source is untouched and the original session log is never deleted.
