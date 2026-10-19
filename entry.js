@@ -45,6 +45,9 @@
 // would answer that request with this plugin's 404 — the button would never register.
 
 import { randomUUID } from 'node:crypto'
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 export const name = 'dsh-sqy-rewind'
 
@@ -193,6 +196,109 @@ function turnAt(turns, seq) {
 }
 
 /**
+ * The first turn whose `turn/start` seq is strictly greater than `seq`, or null.
+ *
+ * Used to recover the *last* shadowed turn after a restart: the folded surface
+ * keeps the first `turn/start` after the shadowed range, so that turn minus one
+ * is the final turn the rewind actually hid.
+ * @param turns - `turnOutline` entries, ascending by seq.
+ * @param seq - target event seq.
+ * @returns the next turn number, or null when `seq` is past every entry.
+ */
+function nextTurnAfter(turns, seq) {
+  for (const entry of turns) {
+    if (typeof entry?.seq !== 'number' || typeof entry?.turn !== 'number') continue
+    if (entry.seq > seq) return entry.turn
+  }
+  return null
+}
+
+/**
+ * Durable cache of each rewind marker's true turn range.
+ *
+ * `readSurface` folds the surface and drops the shadowed turns' `turn/start`
+ * events, so the `turnOutline` projection loses the very turns a rewind hid.
+ * Re-deriving the range from that folded outline after a restart therefore
+ * returns a range that stops at the *first* shadowed turn, and the browser half
+ * only hides that one turn — the rest of the rewound conversation reappears.
+ *
+ * We record the correct range at rewind time, while the full (unfolded) outline
+ * is still in memory, and replay it on reload. This needs no change to the DSH
+ * core: the store is purely plugin-local state.
+ *
+ * Keyed by `sessionId` then by `"<startSeq>:<endSeq>"` so a marker is matched
+ * unambiguously even when several rewinds land in one session.
+ */
+const REWIND_STORE_VERSION = 1
+
+function rewindStorePath() {
+  try {
+    return join(dirname(fileURLToPath(import.meta.url)), '.rewind-store.json')
+  } catch {
+    // No module URL (non-ESM host): persistence is unavailable; the live rewind
+    // still works, only the post-restart re-hide falls back to estimation.
+    return null
+  }
+}
+
+let rewindStoreCache = null
+
+function loadRewindStore() {
+  if (rewindStoreCache !== null) return rewindStoreCache
+  const empty = { version: REWIND_STORE_VERSION, sessions: {} }
+  const path = rewindStorePath()
+  if (path === null) {
+    rewindStoreCache = empty
+    return rewindStoreCache
+  }
+  try {
+    if (existsSync(path)) {
+      const parsed = JSON.parse(readFileSync(path, 'utf8'))
+      if (parsed && typeof parsed === 'object' && parsed.sessions && typeof parsed.sessions === 'object') {
+        rewindStoreCache = parsed
+        return rewindStoreCache
+      }
+    }
+  } catch {
+    // Corrupt or unreadable; start fresh rather than break every read.
+  }
+  rewindStoreCache = empty
+  return rewindStoreCache
+}
+
+function saveRewindStore(store) {
+  rewindStoreCache = store
+  const path = rewindStorePath()
+  if (path === null) return
+  try {
+    mkdirSync(dirname(path), { recursive: true })
+    writeFileSync(path, JSON.stringify(store))
+  } catch {
+    // Best-effort only.
+  }
+}
+
+function rewindMarkKey(startSeq, endSeq) {
+  return `${String(startSeq)}:${String(endSeq)}`
+}
+
+function rememberRewindMark(sessionId, startSeq, endSeq, fromTurn, toTurn) {
+  const store = loadRewindStore()
+  if (!store.sessions[sessionId]) store.sessions[sessionId] = {}
+  store.sessions[sessionId][rewindMarkKey(startSeq, endSeq)] = { fromTurn, toTurn }
+  saveRewindStore(store)
+}
+
+function recallRewindMark(sessionId, startSeq, endSeq) {
+  const store = loadRewindStore()
+  const forSession = store.sessions[sessionId]
+  if (forSession && forSession[rewindMarkKey(startSeq, endSeq)]) {
+    return forSession[rewindMarkKey(startSeq, endSeq)]
+  }
+  return undefined
+}
+
+/**
  * Every rewind marker still present on the model surface.
  *
  * Markers that a later rewind shadowed are gone from the surface and are not
@@ -212,11 +318,34 @@ async function readMarks(ctx, sessionId) {
     if (!isRewindMark(event)) continue
     const range = replaceRangeOf(event)
     if (range === undefined) continue
+
+    // Prefer the range recorded at rewind time. It is correct even after a restart
+    // because it was captured while the unfolded outline (with every shadowed
+    // turn/start) was still available.
+    const remembered = recallRewindMark(sessionId, range.start, range.end)
+    if (remembered
+      && Number.isInteger(remembered.fromTurn)
+      && Number.isInteger(remembered.toTurn)) {
+      marks.push({
+        startSeq: range.start,
+        endSeq: range.end,
+        fromTurn: remembered.fromTurn,
+        toTurn: remembered.toTurn,
+      })
+      continue
+    }
+
+    // Fallback for markers written by older builds (or if the store was lost): the
+    // folded outline still yields the correct *first* turn, and the *last* turn is
+    // the first preserved `turn/start` *after* the shadowed range, minus one.
+    const fromTurn = turnAt(turns, range.start)
+    const nextTurn = nextTurnAfter(turns, range.end)
+    const toTurn = typeof nextTurn === 'number' ? nextTurn - 1 : fromTurn
     marks.push({
       startSeq: range.start,
       endSeq: range.end,
-      fromTurn: turnAt(turns, range.start),
-      toTurn: turnAt(turns, range.end),
+      fromTurn,
+      toTurn,
     })
   }
   return marks
@@ -273,16 +402,41 @@ async function rewindAt(ctx, sessionId, turn) {
   })
   if (absorbed) throw new Error('这一轮的起点已经被压缩（compaction）吸收，无法精确回退')
 
-  // 3b. Find where this turn starts, in MODEL-VISIBLE ORDER.
+  // 3b. Find where this turn starts, in MODEL-VISIBLE (folded surface) ORDER.
   //
-  //     Comparing seqs is wrong: a marker carries the seq it was written at, but it
-  //     sits where the history it replaced used to be, so a node with a LARGER seq
-  //     can precede one with a smaller seq. The order that matters is `events`
-  //     order, which is the folded surface order.
+  //     Two core generations must both be understood:
   //
-  //     A turn opens at its first node carrying this turn number, walked back to the
-  //     `user/message` that prompted it.
-  const firstTurnNode = events.findIndex((event) => event?.data?.turn === turn)
+  //     - Old core stamps every surface node with `data.turn`, so the turn can be
+  //       located directly by `event.data.turn === turn`.
+  //     - The current core (nightly, post-2026-10-10) no longer stamps every node
+  //       — only `turn/start` markers keep the number — so that lookup returns -1
+  //       for every turn. We therefore ALSO anchor on the turn's `turn/start` seq
+  //       (`entry.seq`, from the turnOutline projection) and accept the first REAL
+  //       `user/message` prompt that follows it in surface order, skipping any
+  //       `replace` carrier (a prior rewind or compaction marker, which is itself
+  //       a `user/message`).
+  //
+  //     Both predicates are needed: after a compaction that survives (its marker
+  //     replaces EARLIER turns only), this turn's own prompt may already have been
+  //     folded away and the visible turn opens with its assistant nodes — only
+  //     the `data.turn` lookup still finds those.
+  //
+  //     Comparing seqs directly is still unsafe: a marker carries the seq it was
+  //     written at, but it sits where the history it replaced used to be, so a node
+  //     with a LARGER seq can precede one with a smaller seq. We scan in `events`
+  //     (surface) order and only use `seq > entry.seq` as a sanity gate.
+  const firstTurnNode = events.findIndex((event) => {
+    // Old core: the node itself carries the turn number.
+    const nodeTurn = event?.data?.turn
+    if (Number.isSafeInteger(nodeTurn) && nodeTurn === turn) return true
+    // Current core: first real prompt after this turn's `turn/start`.
+    if (event?.type !== 'user/message') return false
+    if (typeof event?.seq !== 'number' || !(event.seq > entry.seq)) return false
+    const op = event?.surfaceOp
+    const isReplace = (typeof op === 'string' && op === 'replace')
+      || (op !== null && typeof op === 'object' && op.op === 'replace')
+    return !isReplace
+  })
   if (firstTurnNode === -1) throw new Error('这一轮在当前模型历史里已经没有可见内容了')
 
   let startIdx = firstTurnNode
@@ -330,12 +484,21 @@ async function rewindAt(ctx, sessionId, turn) {
   // 5. Appends only enter a 200ms persistence buffer; flush is the durability barrier.
   await ctx.sessions.flush(session)
 
+  const fromTurn = turnAt(turns, startSeq)
+  const toTurn = turnAt(turns, endSeq)
+
+  // Record the true range now, while the full (unfolded) outline is still in
+  // memory. After a restart the surface fold drops the shadowed turns' `turn/start`
+  // events, so `readMarks` could no longer recover the last shadowed turn; the
+  // stored value lets it hide every turn the rewind actually hid.
+  rememberRewindMark(sessionId, startSeq, endSeq, fromTurn, toTurn)
+
   return {
     startSeq,
     endSeq,
     turn,
-    fromTurn: turnAt(turns, startSeq),
-    toTurn: turnAt(turns, endSeq),
+    fromTurn,
+    toTurn,
   }
 }
 

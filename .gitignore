@@ -11,3 +11,6 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+
+# Plugin runtime state (rewind history, written next to the installed copy)
+.rewind-store.json

@@ -68,6 +68,16 @@ const SESSION_CONTAINER_ATTR = 'data-conversation-session'
 /** Flow kind of a message the user wrote. */
 const USER_FLOW_KIND = 'user'
 
+/**
+ * Flow kind of a turn's process-disclosure row.
+ *
+ * The agent loop logs `turn/start` BEFORE the turn's opening prompt, so this
+ * row sorts immediately before the turn's user message in the flow. It is the
+ * fallback source of a turn number when the user message's own flow item
+ * carries none.
+ */
+const TURN_PROCESS_FLOW_KIND = 'turn-process'
+
 /** Turn number of the flow item that wraps a node, as a decimal string. */
 const TURN_ATTR = 'data-chat-turn'
 
@@ -82,6 +92,15 @@ const HIDE_STYLE_ID = 'dsh-sqy-rewind-hide'
 
 /** Safety cap: never emit more than this many turn selectors for one marker. */
 const MAX_TURNS_PER_MARK = 500
+
+/**
+ * How many times we will ask the Host for a session's rewind marks after first
+ * spotting it in the DOM. The first read can race the Host finishing a session
+ * load (returns empty), and the one-shot guard would otherwise never retry — which
+ * is exactly how a rewound conversation could reappear after a restart. Bounded so
+ * it cannot poll forever.
+ */
+const MAX_REFRESH_ATTEMPTS = 10
 
 /** Minimum gap between two DOM sweeps. */
 const SWEEP_MIN_MS = 150
@@ -142,6 +161,9 @@ const tipTimers = new WeakMap()
 
 /** Throttle for the state read. */
 const lastRefresh = { sessionId: null, at: 0 }
+
+/** Last sweep summary logged, so a steady transcript does not spam the console. */
+let lastSweepLog = ''
 
 /**
  * Insert one `<style>` element, once.
@@ -346,16 +368,44 @@ function turnOf(element) {
 }
 
 /**
- * Whether an action row belongs to a message the user wrote.
+ * The turn number of the turn-process row that precedes a user message.
  *
- * The row itself only says which side of the transcript it is on; `steering` rows
- * render the same user-side chrome but are not turns the user can rewind to.
+ * A user message's own flow item carries `data-chat-turn` only when the engine
+ * resolves the node inside a numbered turn. When it does not (React omits the
+ * attribute entirely), the turn-process disclosure row directly before it
+ * still carries the right number: `turn/start` is logged before the turn's
+ * prompt, so that neighbour belongs to the same turn.
+ *
+ * Only the NEAREST preceding row that carries a turn number is consulted, and
+ * only when it is a turn-process row. Anything else means this message does
+ * not open a turn, and guessing would cut the history in the wrong place.
  * @param row - the `div[data-clock="start"]`.
- * @returns true for a `data-chat-flow-kind="user"` node.
+ * @returns the turn, or null when no such neighbour carries one.
  */
-function isUserRow(row) {
+function turnFromSiblings(row) {
   const flow = row.closest(`[${FLOW_KIND_ATTR}]`)
-  return flow !== null && flow.getAttribute(FLOW_KIND_ATTR) === USER_FLOW_KIND
+  let sibling = flow === null ? null : flow.previousElementSibling
+  while (sibling !== null) {
+    const raw = sibling.getAttribute(TURN_ATTR)
+    if (raw !== null && raw !== '') {
+      if (sibling.getAttribute(FLOW_KIND_ATTR) !== TURN_PROCESS_FLOW_KIND) return null
+      const turn = Number(raw)
+      return Number.isSafeInteger(turn) ? turn : null
+    }
+    sibling = sibling.previousElementSibling
+  }
+  return null
+}
+
+/**
+ * The turn a row belongs to: the row's own attribute first, its turn-process
+ * neighbour second, the number captured when the button was built last.
+ * @param row - the `div[data-clock="start"]`.
+ * @param fallback - the turn the button was created with, if any.
+ * @returns the turn, or null when no source has one.
+ */
+function resolveTurn(row, fallback) {
+  return turnOf(row) ?? turnFromSiblings(row) ?? fallback ?? null
 }
 
 /**
@@ -526,7 +576,7 @@ function createRewindButton(row, copy, turn, runtime) {
     }
     // Re-read the turn: the row is a live DOM node and the attribute is the only
     // authority on which turn this button belongs to.
-    const target = turnOf(row) ?? turn
+    const target = resolveTurn(row, turn)
     runtime.sessionId = sessionId
     setPhase('busy')
     fetch(`${ROUTE}/api/rewind`, {
@@ -577,24 +627,77 @@ function createRewindButton(row, copy, turn, runtime) {
 /**
  * Put one button into every user action row that lacks one.
  *
- * Rows without a numbered turn are skipped outright: a node outside a turn has no
- * turn to rewind to, and guessing one would cut the history in the wrong place.
+ * The turn number comes from the row's own `data-chat-turn` when the engine
+ * put one there; otherwise from the turn-process row before it. The number is
+ * written back onto the row's flow item either way, so the rewind-hiding rules
+ * can reach a user message whose flow item carried no turn of its own.
+ *
+ * Rows that are not the user's own message are skipped outright: a steering
+ * row renders the same chrome but is not a turn the user can rewind to.
  * @param runtime - shared runtime state.
  */
 function injectButtons(runtime) {
   const rows = document.querySelectorAll(ROW_SELECTOR)
+  const skipped = {}
+  let present = 0
+  const note = (reason) => {
+    skipped[reason] = (skipped[reason] ?? 0) + 1
+  }
   for (const row of rows) {
-    if (row.querySelector(`[${INJECT_ATTR}]`) !== null) continue
-    if (!isUserRow(row)) continue
-    const turn = turnOf(row)
-    if (turn === null) continue
+    if (row.querySelector(`[${INJECT_ATTR}]`) !== null) {
+      present += 1
+      continue
+    }
+    const flow = row.closest(`[${FLOW_KIND_ATTR}]`)
+    const kind = flow === null ? null : flow.getAttribute(FLOW_KIND_ATTR)
+    if (kind !== USER_FLOW_KIND) {
+      note(`kind:${String(kind)}`)
+      continue
+    }
+    let turn = turnOf(row)
+    if (turn === null) {
+      turn = turnFromSiblings(row)
+      if (turn !== null && flow !== null && flow.getAttribute(TURN_ATTR) === null) {
+        flow.setAttribute(TURN_ATTR, String(turn))
+      }
+    }
+    if (turn === null) {
+      note('noTurn')
+      continue
+    }
     // The row's first button is the copy control: on the user side the clock is a
     // span and `onBranch` / `extraActions` are not passed at all.
     const copy = row.querySelector('button')
-    if (copy === null) continue
+    if (copy === null) {
+      note('noButton')
+      continue
+    }
     const anchor = directChildOf(row, copy)
     if (anchor === null) continue
     anchor.insertAdjacentElement('afterend', createRewindButton(row, copy, turn, runtime))
+    present += 1
+  }
+  reportSweep(rows.length, present, skipped)
+}
+
+/**
+ * Log one line per sweep, but only when the picture changed.
+ *
+ * The sweep runs on every transcript mutation, so without the change guard the
+ * console would be unusable. When a rewind button never appears, this line is
+ * the whole diagnosis: how many rows were seen, how many carry a button, and
+ * why the rest were skipped.
+ * @param rows - rows found this sweep.
+ * @param present - rows carrying a rewind button after this sweep.
+ * @param skipped - skip reasons and their counts.
+ */
+function reportSweep(rows, present, skipped) {
+  const parts = Object.keys(skipped).sort().map((key) => `${key}=${String(skipped[key])}`)
+  const line = `dsh-sqy-rewind: sweep rows=${String(rows)} with=${String(present)}` +
+    (parts.length === 0 ? '' : ` skipped ${parts.join(' ')}`)
+  if (line !== lastSweepLog) {
+    lastSweepLog = line
+    console.log(line)
   }
 }
 
@@ -617,11 +720,24 @@ function syncSession(runtime) {
   const mainId = resolveSessionId(null, runtime)
   if (mainId !== null) seenSessions.add(mainId)
 
+  // A freshly reopened session may not be "live" in the Host the first time we
+  // sweep it, so the first /api/state read can come back empty and leave the
+  // rewound turns visible. Re-attempt (cheap, throttled, bounded) until every
+  // seen session has had enough chances for the Host to answer.
+  let pending = false
   for (const sId of seenSessions) {
-    if (!runtime.loadedSessions.has(sId)) {
-      runtime.loadedSessions.add(sId)
-      refreshHidden(runtime, sId, true)
-    }
+    const attempts = runtime.refreshAttempts.get(sId) || 0
+    if (attempts >= MAX_REFRESH_ATTEMPTS) continue
+    runtime.refreshAttempts.set(sId, attempts + 1)
+    refreshHidden(runtime, sId, true)
+    pending = true
+  }
+
+  if (pending && runtime.refreshTimer === null) {
+    runtime.refreshTimer = setTimeout(() => {
+      runtime.refreshTimer = null
+      syncSession(runtime)
+    }, 1200)
   }
 }
 
@@ -719,7 +835,9 @@ exports.apply = function apply(ctx) {
       sessions: null,
       sessionId: null,
       marksBySession: new Map(),
-      loadedSessions: new Set()
+      loadedSessions: new Set(),
+      refreshAttempts: new Map(),
+      refreshTimer: null
     }
     const injection = startInjection(runtime)
 
@@ -749,7 +867,18 @@ exports.apply = function apply(ctx) {
 
     if (ctx !== null && ctx !== undefined && typeof ctx.effect === 'function') {
       try {
-        ctx.effect(() => injection.stop, 'dsh-sqy-rewind: injected user-action button')
+        // The effect body runs NOW and must RETURN the teardown. Running the
+        // teardown here instead would stop the injection in the same tick that
+        // started it: on a fresh page load the transcript has not rendered yet,
+        // the first sweep finds no rows, and the observer is gone before any row
+        // ever appears — the button would never come back.
+        ctx.effect(() => () => {
+          if (runtime.refreshTimer !== null) {
+            clearTimeout(runtime.refreshTimer)
+            runtime.refreshTimer = null
+          }
+          injection.stop()
+        }, 'dsh-sqy-rewind: injected user-action button')
       } catch (error) {
         console.warn('dsh-sqy-rewind: teardown not registered', error)
       }
